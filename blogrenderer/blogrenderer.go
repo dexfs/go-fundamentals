@@ -2,6 +2,8 @@ package blogrenderer
 
 import (
 	"embed"
+	"github.com/gomarkdown/markdown"
+	"github.com/gomarkdown/markdown/parser"
 	"html/template"
 	"io"
 	"strings"
@@ -17,17 +19,14 @@ type Post struct {
 	Tags                     []string
 }
 
-func (p Post) SanitisedTitle() string {
-	return strings.ToLower(strings.Replace(p.Title, " ", "-", -1))
-}
-
 type PostRenderer struct {
-	templ *template.Template
+	templ    *template.Template
+	mdParser *parser.Parser
 }
 
 type PostViewModel struct {
-	Title, SanitiseTitle, Description, Body string
-	Tags                                    []string
+	Post
+	HTMLBody template.HTML
 }
 
 func NewPostRenderer() (*PostRenderer, error) {
@@ -36,13 +35,26 @@ func NewPostRenderer() (*PostRenderer, error) {
 		return nil, err
 	}
 
-	return &PostRenderer{templ: tmpl}, nil
+	extensions := parser.CommonExtensions | parser.AutoHeadingIDs
+	parser := parser.NewWithExtensions(extensions)
+
+	return &PostRenderer{templ: tmpl, mdParser: parser}, nil
 }
 
 func (r *PostRenderer) Render(w io.Writer, p Post) error {
-	return r.templ.ExecuteTemplate(w, "blog.gohtml", p)
+	return r.templ.ExecuteTemplate(w, "blog.gohtml", newPostVM(p, r))
 }
 
 func (r *PostRenderer) RenderIndex(w io.Writer, posts []Post) error {
 	return r.templ.ExecuteTemplate(w, "index.gohtml", posts)
+}
+
+func (p Post) SanitisedTitle() string {
+	return strings.ToLower(strings.Replace(p.Title, " ", "-", -1))
+}
+
+func newPostVM(p Post, r *PostRenderer) PostViewModel {
+	vm := PostViewModel{Post: p}
+	vm.HTMLBody = template.HTML((markdown.ToHTML([]byte(p.Body), r.mdParser, nil)))
+	return vm
 }
